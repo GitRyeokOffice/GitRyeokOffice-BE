@@ -39,3 +39,6 @@ build/
 # Environment variables
 .env
 application-secret.yml
+
+# Docker volumes
+mysql_data/

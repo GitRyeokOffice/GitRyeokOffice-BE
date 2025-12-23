@@ -52,3 +52,127 @@ AI 연동: GitHub 데이터를 문자열/JSON으로 요약하여 OpenAI에 전�
    빌드/실행: ./gradlew bootRun
 
 테스트: ./gradlew test
+
+필드명,타입,설명
+id,Long,Primary Key (Auto Increment)
+password,String,암호화된 비밀번호
+nickname,String,서비스 내 닉네임
+githubId,String,GitHub 연동용 아이디 (분석의 시작점)
+jobType,Enum,"DEVELOPER, DESIGNER, PLANNER (설문 기반)"
+vibeStatus,String,AI 분석 결과 요약 (JSON 혹은 String)
+이걸기반으로 로그인 기능을 구현할거야
+
+
+package com.ebbinghaus.ttopullae.global.auth;
+
+import com.ebbinghaus.ttopullae.global.exception.ApplicationException;
+import com.ebbinghaus.ttopullae.global.util.CookieUtil;
+import com.ebbinghaus.ttopullae.global.util.JwtTokenProvider;
+import com.ebbinghaus.ttopullae.user.exception.UserException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+/**
+* JWT 토큰 인증을 처리하는 인터셉터
+* 쿠키에서 토큰을 추출하고 검증한 후, 사용자 ID를 request attribute에 저장
+  */
+  @Slf4j
+  @Component
+  @RequiredArgsConstructor
+  public class JwtAuthenticationInterceptor implements HandlerInterceptor {
+
+  private final JwtTokenProvider jwtTokenProvider;
+  private static final String USER_ID_ATTRIBUTE = "userId";
+
+  @Override
+  public boolean preHandle(
+  HttpServletRequest request,
+  HttpServletResponse response,
+  Object handler
+  ) {
+
+       if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+           return true;
+       }
+
+       // 쿠키에서 JWT 토큰 추출
+       String token = CookieUtil.extractToken(request.getCookies());
+
+       // 토큰 유효성 검증 (예외 발생 시 GlobalExceptionHandler에서 처리)
+       jwtTokenProvider.validateToken(token);
+
+       // 토큰에서 사용자 ID 추출 후 request attribute에 저장
+       Long userId = jwtTokenProvider.getUserId(token);
+       request.setAttribute(USER_ID_ATTRIBUTE, userId);
+
+       log.debug("사용자 인증 성공. userId: {}, URI: {}", userId, request.getRequestURI());
+       return true;
+  }
+  }
+
+
+package com.ebbinghaus.ttopullae.global.auth;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+* 컨트롤러 메서드 파라미터에 현재 로그인한 사용자의 ID를 주입하기 위한 어노테이션
+*
+* 사용 예시:
+* public ResponseEntity<?> createStudyRoom(@LoginUser Long userId, @RequestBody StudyRoomRequest request)
+  */
+  @Target(ElementType.PARAMETER)
+  @Retention(RetentionPolicy.RUNTIME)
+  public @interface LoginUser {
+  }
+
+
+package com.ebbinghaus.ttopullae.global.auth;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.MethodParameter;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.support.WebDataBinderFactory;
+import org.springframework.web.context.request.NativeWebRequest;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.method.support.ModelAndViewContainer;
+
+/**
+* @LoginUser 어노테이션이 붙은 파라미터에 현재 로그인한 사용자 ID를 주입하는 ArgumentResolver
+  */
+  @Component
+  public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver {
+
+  private static final String USER_ID_ATTRIBUTE = "userId";
+
+  @Override
+  public boolean supportsParameter(MethodParameter parameter) {
+  // @LoginUser 어노테이션이 있고, Long 타입인 파라미터만 지원
+  return parameter.hasParameterAnnotation(LoginUser.class)
+  && Long.class.isAssignableFrom(parameter.getParameterType());
+  }
+
+  @Override
+  public Object resolveArgument(
+  MethodParameter parameter,
+  ModelAndViewContainer mavContainer,
+  NativeWebRequest webRequest,
+  WebDataBinderFactory binderFactory
+  ) {
+  // Interceptor에서 request attribute에 저장한 userId를 가져옴
+  HttpServletRequest request = (HttpServletRequest) webRequest.getNativeRequest();
+  return request.getAttribute(USER_ID_ATTRIBUTE);
+  }
+  }
+* 이런식으로 구성을 할건데 이 코드들은 다른 플젝 코드를 가져온거라서 그대로 하면 안되고 넌 user도메인 안에서 DDD구조를 가지고 앞으로 코드를 짤거야
+  application
+  domain
+  exception
+  presentation을 둘거고 아까 완성한 exception도 해주면 돼 자 내가 준 도메인을 기준으로 작업을 시작해줘
